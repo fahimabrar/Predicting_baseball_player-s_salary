@@ -1,4 +1,4 @@
-# Predicting_baseball_player-s_salary
+# Predicting Baseball Player's Salary
 
 #### This project is a University Coursework
 
