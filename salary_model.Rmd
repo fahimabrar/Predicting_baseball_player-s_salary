@@ -1,0 +1,665 @@
+---
+title: "CS5801 Coursework Template Proforma"
+author: "2027461"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    df_print: paged
+version: 1
+---
+
+```{r}
+#install.packages("ggplot2")
+#install.packages("dplyr")
+#install.packages("stringr")
+#install.packages("naniar")
+#install.packages("validate")
+#install.packages("purrr")
+#install.packages("gridExtra")
+#install.packages("tidyr")
+```
+
+```{r message=FALSE, warning= FALSE}
+
+#ggplot library for visualization
+library(ggplot2)
+#dplyr library for data manipulation
+library(dplyr)
+#stringr library is for string manipulation
+library(stringr)
+#naniar library is for visualising missing data
+library(naniar)
+#validate library for data validation
+library(validate)
+library(purrr)
+#grid Extra for plotting multiple plot in grid
+library(gridExtra)
+library(tidyr)
+```
+
+
+
+# 1. Organise and clean the data
+
+## 1.1 Subset the data into the specific dataset allocated
+  
+
+```{r}
+
+#load data from local pc
+load("CS5801_data.rda")
+
+#load data direct from github
+#load(url("https://raw.githubusercontent.com/mjshepperd/CS5702-Data/master/CS5801_data.rda"))
+subdata.df <- subset(CS5801.data, teamID.x=="LAA"| teamID.x=="TEX")
+
+#To arrange the row number
+rownames(subdata.df) <- NULL
+head(subdata.df)
+dim(subdata.df)
+```
+It has 80 rows and 15 columns
+
+
+## 1.2 Data quality analysis
+ 
+
+### Data Quality Analysis Plan
+
+- First I will check if there any missing value
+- Player ID should be unique
+- TeamID Should not be more than three letter, and cannot be any value rather than LAA and TEX
+- G(number of games), R(Runs), H(Hits), AB , RBI(Runs Batted in) cannot be negative
+- Weight and Height cannot be negative, zero or any unreal value
+- Salary cannot be negative or zero
+- Career length cannot be more than a Player's age. Can't be zero or negative
+- Hit.ind cant be any value rather tan 0 and 1 
+
+
+### Implementation
+
+##### Check if there is any null value
+
+
+```{r}
+#To check if there any null value
+is.null(subdata.df)
+```
+
+##### Lets visualize it
+
+
+```{r}
+vis_miss(subdata.df)
+```
+
+
+
+
+##### Check if there any duplicates in player ID
+
+```{r}
+
+#Lets see how much row we have
+dim(subdata.df)[1]
+#Lets see how much unique row we have
+length(unique(subdata.df$playerID))
+
+```
+There are two duplicate value
+Our data has 80 row and here we have unique 78 rows
+	
+
+##### Lets check the data quality
+
+```{r}
+data.rules <- validator(# hit.ind should be only zero and 1
+                        hit_Ok = is.element(hit.ind, c(0,1)), 
+                        # team id only have two value, each with length of 3
+                        team_Ok = is.element(teamID.x, c("LAA", "TEX")),
+                        # left right or both handed
+                        bats_Ok = is.element(bats, c("L", "B", "R")),
+                        #gmes, runs, hits, Ab, rbi cant be negative
+                        game_OK = G>=0, 
+                        runs_OK = R>=0, 
+                        hits_Ok = H>=0,
+                        AB_Ok = AB>=0,
+                        RBI_Ok = RBI>=0,
+                        #weight should be positive and 350 pounds weighted person is obease
+                        weight_Ok = weight>=0& weight<350,
+                        #height should be positive and cant be more than 180 inch 
+                        height_Ok = height>=0 & height<108,
+                        #players salary should be more than zer0
+                        salary_Ok = salary>0,
+                        #career lenght cant be greater than someones age
+                        career_Ok = career.length>=0 & age>career.length,
+                        #player cannt be too young or too old to play in a national team
+                        age_Ok = age>=15 & age<=50
+                        )
+
+#comparing the rules with dataset
+qual.check <- confront(subdata.df, data.rules)
+summary(qual.check)
+```
+##### Let us summarise our findings of the quality issue
+
+- There is no null value in the dataset
+- we have 2 duplicates in our player id.
+- We can see that there is some anomaly in Runs Bated IN (RBI) column. In has one negative value
+- There is some anomaly in a row in where weight is unnatural
+- In career column a value where career length is greater than someones age
+
+
+Let us visualize our data quality
+
+```{r warning = FALSE}
+barplot(qual.check, xlab = "")
+```
+ 
+## 1.3 Data cleaning
+
+### Plan for data cleaning
+
+- we have 2 duplicates in our player id. We will deeply inspect the value and remove them
+- In Runs Bated IN (RBI) column we will closely inspect the value and we may impute some value in the column.
+- The row where unnatural weight ocuurs we will replace it with the mean value of the column
+- When career length is greater than the age, we will replace it with the mean value of the carrer column
+
+
+
+### Implementing data cleaning
+
+
+Lets find which value are duplicated in the player id
+```{r}
+duplicate <- subdata.df$playerID[duplicated(subdata.df$playerID)]
+duplicate
+```
+
+Now lets find in which rows the value lies
+
+```{r}
+
+for (val in duplicate)
+{
+  cat(val, "appeared in row number: ",  which(subdata.df$playerID == val, arr.ind=TRUE), "\n")
+  #cat function concatinate the strings and values
+  #which function search for the duplicate value in the player ID
+}
+```
+So we can see richga01 appears in row 50 and also in row 71
+lewisc01 occurs in row number 34 and 76
+
+Lets see if all the contents of duplicated rows are same or not
+
+```{r}
+ifelse(subdata.df[50, ] == subdata.df[71, ], "Matched", "Mismatched")
+ifelse(subdata.df[34, ] == subdata.df[76, ], "Matched", "Mismatched")
+```
+
+
+We can see maximum number of values of these two duplicates matched. So Lets Delete one copy of duplicates
+
+```{r}
+uni_sub <- subdata.df[-c(50, 34), ]
+
+#we deleted duplicate row number 50 and 34 
+#uni_sub states for unique subdata
+#Now lets rearrange row numbers again
+rownames(uni_sub) <- NULL
+```
+
+Now lets check for negative values 
+```{r}
+#Filtering the negative value containing rows
+uni_sub %>%
+  filter(G<0 | R<0 | H<0 | RBI<0 | weight<0 | height<0 | salary<0 | career.length<0 | age<0 | hit.ind<0)
+
+```
+
+Lets find the row number of that Id
+```{r}
+cat("The row number where negative value appears is: ", which(uni_sub$playerID == "perezjj03", arr.ind=TRUE))
+#As this is the only row containing negative number we can remove it. But before that lets inspect the row very closely
+uni_sub[77, ]
+```
+We found in RBI column it have some negative value. Otherwise everything seems okay. And we assume that the negative mark putted unintentionally. As we deal with small dataset lets not remove it, rather than convert negative value to positive.
+
+
+```{r}
+uni_sub[77, ]$RBI<- uni_sub[77, ]$RBI * -1 
+```
+
+Now lets deal wirh some players carrear length, greater than his age
+```{r}
+
+#Career length cannot be greater than  a players age
+
+for(val in seq(1, dim(uni_sub)[1])){
+  a <- (uni_sub$age[val]<uni_sub$career.length[val])
+  
+  if(isTRUE(a)){
+   cat("Row number : ", val, ", contains career length greater than his/her age") 
+  }
+}
+
+```
+
+Lets inspect row number 74
+
+```{r}
+uni_sub[72, ]
+```
+
+
+
+we can remove this value. But we cannot afford this loss as our dataset contains only 78 values. So lets impute mean value to career length
+
+```{r}
+uni_sub[72, ]$career.length <- mean(uni_sub$career.length)
+```
+
+
+# 2. Exploratory Data Analysis (EDA)
+
+
+
+## 2.1 EDA plan
+  
+
+##### Univariate Analysis
+- Look at the histogram of numeric data to see if they are normally distributed
+- Explore it numerically by doing shapiro test
+- Look at the count of player left right or both handed (bar graph)
+
+
+##### Bivariate Analysis
+- To see if salary increase in terms of career length
+- If there any multicoliniarity between age and career length
+- which team have high salary
+
+##### Multivariate Analysis
+- To see Bargraph of Left right and BOth handed players in differet teams
+- Hit. ind in different teams
+
+
+
+## 2.2 EDA and summary of results  
+
+
+##### Univariate Analysis
+
+First, Lets see if the numeric data are normally distributed by plotting histogram
+
+```{r}
+
+uni_sub %>%
+  keep(is.numeric) %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+    facet_wrap(~ key, scales = "free") +
+    geom_histogram()
+```
+
+
+
+Lets do shapiro test to see which column is normally distributed
+```{r}
+vis_column<- c("G", "R", "H", "AB", "RBI", "height", "weight", "salary", "age", "career.length" )
+for (val in seq(1:10)){
+  cat("Shapiro test for normality for column: ", vis_column[val])
+  print(shapiro.test(get(vis_column[val], uni_sub)))
+}
+
+```
+Here we can see that column G, Height, Age, Career Length are normally distribute. And the p-value is significant. So we can be confident to make a such statement. 
+
+
+
+
+
+
+
+
+Plot bar graph to see the proportion of left, right and both handed player
+And proportion of hit.ind 
+```{r}
+par(mfrow = c(2, 2))
+plt1 <- ggplot(data = uni_sub, aes(x= bats)) +geom_bar() + labs(title = "Bar graph for Bats (L, R, B)")
+plt2 <- ggplot(data = uni_sub, aes(x= hit.ind)) +geom_bar() + labs(title = "Bar graph for hit indicate")
+grid.arrange(plt1, plt2, ncol =2)
+```
+..
+
+###### We see most of the players are Right handed. and more than 50 percent of them have made atleast one hit in 2015 season. 
+
+
+
+##### Bivariate Analysis
+
+lets see if there any relation between career length vs salary
+
+```{r}
+cor(uni_sub$career.length, uni_sub$salary)
+```
+we see the relation is not that much. Lets see how much we can trust the correation score
+
+```{r}
+cor.test(uni_sub$career.length, uni_sub$salary)
+```
+Here p value is very less. so we can trust the correation score. 
+
+Now lets visualizet the relation
+
+```{r}
+ggplot(data = uni_sub, aes(x = career.length, y = salary)) + geom_point() + labs(title = "Scatter plot for career length vs salary")
+```
+..
+
+we see there is some relation between career.length and salary. But the data followint heteroskadacity(change of variance over time) . In future if we want to do analysis with this relation, we have to deal with this. 
+
+
+We assume as age increases the carrear length also can be increased. lets see if there any multicollinarity between them. It will help us for further analysis
+
+```{r}
+summary(lm(career.length~age, data=uni_sub))
+```
+we can see that there is a significant relation between age and career length. R squared is 0.60, that is our model can explain 61 percent of its variables. F statistics is also significant. 
+
+Lets visualize it
+
+```{r}
+ggplot(data = uni_sub, aes(career.length, age))+geom_point()+geom_smooth(method = lm)+labs(title = "Relation between career length and age")
+```
+..
+
+Now lets see boxplot for salary for both the team
+```{r}
+ggplot(data = uni_sub, aes(x = teamID.x, y = salary)) + geom_boxplot()+labs(title = "Boxplot for comparing salary between two teams")
+
+```
+..
+
+we see there is not that much difference between salary betweent the two teams. Lets do some hypothesis testing.
+
+```{r}
+summary(aov(uni_sub$salary~uni_sub$teamID.x))
+```
+Here null hypotheis is there is no difference between the two group. And we see that here p-value is large. So we cannot reject the null hypotheis. So there is no difference between the salary of the players in the both team
+
+
+##### Multivariate Analysis
+
+```{r}
+ggplot(data = uni_sub, aes(x= bats, fill = teamID.x)) +geom_bar()+labs(title = "Left, Right and both handed players proportion for different teams")
+
+```
+
+
+
+
+..
+
+we can see that in both team right handed players are the most in number. And TEX team has more both handed player than LAA team.
+
+```{r}
+#ggplot(data = uni_sub, aes(x= salary, col=teamID.x)+geom_bar()
+       
+ggplot(data = uni_sub, aes(x = factor(teamID.x), y = salary, fill = factor(hit.ind) )) + geom_boxplot()+labs(title = "Relation of salary with hit indicator for both teams")
+
+```
+..
+
+ we can see that for Both LAA and TEX player who have hit.ind  = 1 have a higher salary. 
+
+
+### Summary
+
+- column G, Height, Age, Career Length are normally distribute
+- most of the players are Right handed. and more than 50 percent of them have made atleast one hit in 2015 season.
+- There is not that much relation between between career length vs salary
+- carrer length vs salary is fall in heteroskadacity (unequal variance)
+- There is multicollinarity between carrer length and age
+- There is not that much difference between the salary mean between two groups
+- Both team have right handed players are the most in number. And TEX team has more both handed player than LAA team.
+- Player who have atleast one hit in 2015 have more salary than others. 
+
+
+## 2.3 Additional insights and issues
+
+- We found heteroskadacity between career length and salary. This phenomenong might be happens between two other varialbes.
+
+- We found linear relationship between career length and age. IF both of them are in dependant variable there is multicollinarity issue. Their might be other multicollinarity between AB and runs. Beacuse the player good at runs, good chance that they are good at At bats. There might be more. 
+
+- we will may do regression with interaction to detect the multicollinarity. Or steps function will automatically delete them to find the most optimized model.
+
+
+
+
+# 3. Modelling
+
+## 3.1 Build a model for player salary
+
+##### Analysis Plan
+
+- we wont add birthdate in our model as it is represented on Age column
+
+- Player ID have no impact on player salary. so no need to add it in our model.
+
+- From EDA we found that there is multicolinarity between players age and experiecne. SO we will not use both of them for our anlysis. We will only use Experiece rather than age.
+
+- we also saw that there is no difference between players salary based on their team. so we also wont use the team ID for players salary.
+
+- Here we have both categorical and numerical value in our independent variable. So we will use ancova for developing our model.
+
+##### Execution of plan
+
+Lets build our first model including all the variables. 
+
+```{r}
+model1<-lm(uni_sub$salary~uni_sub$G+uni_sub$R+uni_sub$H+uni_sub$AB+uni_sub$RBI+uni_sub$weight+uni_sub$height+uni_sub$career.length+uni_sub$bats+uni_sub$hit.ind)
+summary(model1)
+```
+
+- here we can see that all the variables are not significant. If we check for 95 percent confidence interval we can remove some of the variable as they donot contribute to our model
+
+- Multiple R squared is 0.54. SO our model can expalin 54 percent of the data.
+
+
+
+Now lets see if we remove G, R, AB, RBI, weight, bats, hit.ind what happened
+
+```{r}
+model2<-lm(uni_sub$salary~uni_sub$height+uni_sub$career.length+ uni_sub$H)
+summary(model2)
+```
+- here we can see that all the variable are signifincat
+- But R-squared has decreased. This is our model only can explain 41 percent of the variable.
+
+
+
+Lets see what is the suggestion from the step function
+
+
+```{r}
+step.model = step(model1)
+summary(step.model)
+```
+we can see the best model for salary is lm(formula = salary ~ G + H + height + career.length)
+It has the minimum AIC, and as multiple R squared is 0.51 the model can describe 51 percent of the variables. And the F statistics are really significant.
+
+
+
+- So in conclusion we are stick with model 3. As it has better explainability. Includes all the significant varialbes. Our final model is, model3<-lm(I(sqrt(salary))~height+career.length)  
+
+
+
+## 3.2 Critique model using relevant diagnostics
+
+Lets look at the resudual, qqplots of model 1. The model that includes maximum number of variables
+```{r}
+par(mfrow = c(2, 2))
+plot(model1)
+```
+
+..
+we can see anomalies in residual plot. qqplot doesnot follow the referece (dotted line) line.
+
+Now lets see if after removing G, R, H, AB, RBI, weight, bats, hit.ind (unnecessary variables) what happened to the graph
+
+
+lets plot model2
+```{r}
+par(mfrow = c(2, 2))
+plot(model2)
+```
+..
+we see a little progress in our plot. But the progress is not significant. As outliers distort the model
+
+
+Now lets plot the model generated by step funciton.
+
+
+```{r}
+par(mfrow = c(2, 2))
+plot(step.model)
+```
+..
+
+we see still there is not that much progress. And step function doesnot perform well interms of residulas. so there might be some problem with the dependant variable. Which we will inspect in section 3.3
+
+
+
+## 3.3 Suggest improvements to your model
+
+lets plot the salary. May be there are some outliers 
+
+```{r}
+boxplot(uni_sub$salary)
+```
+
+..
+
+we see there are lot of outliers here.
+One option is to try a transformation.  Square root and log transformations both pull in high numbers.  This can make assumptions work better if the outlier is a dependent variable and can reduce the impact of a single point if the outlier is an independent variable. [1][2]
+
+
+
+- we saw a heteroscadacity in career.lenghts vs salary. So we will log transform it
+
+From this reference [3] we can see a way to deal with heteroskadacity is to trasform the dependant variable. lets do it
+
+Now lets update our model
+
+```{r}
+model3<-lm(I(sqrt(uni_sub$salary))~uni_sub$height+uni_sub$career.length)
+summary(model3)
+```
+We can see all the varialbes are significant and R squared is satisfactory. Lets plot the model to see if the anomaly removed.
+
+
+```{r error = TRUE}
+par(mfrow = c(2, 2))
+plot(model3)
+```
+..
+
+The error for ploting generated from I function [4]. 
+But still with the plot we can see that our model interms of residual performs better than the previous one. 
+
+we see there is a significnat change in r-squared. While predicing somthing with this model we have to remember this transformation. 
+
+
+
+
+# 4. Extension work
+
+## 4.1 Model the likelihood of a player having scored a Hit (using the hit.ind variable provided).
+
+
+
+##### Plan
+- here the output variable hit.ind is a binary categorical variable. So I will use Logistic Regression
+- We will investigate odd ratio to see which variable has how much effect
+
+
+```{r}
+uni_sub$hit.ind <- as.factor(uni_sub$hit.ind)
+
+typeof(uni_sub$hit.ind)
+
+hit.ind.glm<-glm(hit.ind~G+R+AB+RBI+height+career.length+salary ,data = uni_sub, family = "binomial")
+
+summary(hit.ind.glm)
+
+```
+Our algorithm is may be facing overfitting problem. [5] Lets see if there is any mulitcollinarity between the variables. I want to recall our step funciton for previous salary estimation model
+
+##### slaray ~ G + H + height + career.length
+
+here it removed all the R, AB, RBI there might be multicollinarity between them.
+
+Lets plot them in pairs
+
+
+
+```{r}
+plt<-subset(uni_sub, select=c("G", "R", "AB", "RBI", "H") )
+pairs(plt)
+```
+..
+
+We can see there is strong correlation between all of them. 
+
+As suggested from this paper [6] we will remove linearly related variables. Now lets see whats happens 
+
+```{r}
+hit.ind.glm2<-glm(hit.ind~G+height+career.length+salary ,data = uni_sub, family = "binomial")
+
+summary(hit.ind.glm2)
+```
+we found that both G height and salary are significant. so we can remove career lenght variable form our model as it doesnot contribute to the model
+
+```{r}
+hit.ind.glm3<-glm(hit.ind~G+height+salary ,data = uni_sub, family = "binomial")
+
+summary(hit.ind.glm3)
+```
+we see all the variables are significant here and AIC is also decreased. 
+
+
+##### Let's see what step function brings to us
+```{r}
+step.model.glm <- step(hit.ind.glm)
+summary(step.model.glm)
+```
+we see the model suggested by step function is hit.ind~ AB + career.length
+
+
+
+Lets see the odd ratio so that we make some precise decisions
+
+```{r}
+exp(coef(step.model.glm))
+```
+
+we can see that At Bats score and career length increase the chance for making a hit in 2015 match.
+
+
+
+
+
+
+# References  
+
+1. https://www.theanalysisfactor.com/outliers-to-drop-or-not-to-drop/#:~:text=You%20may%20run%20the%20analysis,any%20significance%20from%20your%20analysis.
+
+2. https://cooldata.wordpress.com/2010/03/04/why-transform-the-dependent-variable/
+
+3. https://statisticsbyjim.com/regression/heteroscedasticity-regression/
+
+4. https://stackoverflow.com/questions/40572124/plot-lm-error-operator-is-invalid-for-atomic-vectors
+
+5. https://www.researchgate.net/post/Help_with_Logistic_Regression_In_rglmfit_fitted_probabilities_numerically_0_or_1_occurred_glmfit_algorithm_did_not_converge
+
+6. Senaviratna, N.A.M.R. and Cooray, T.M.J.A., 2019. Diagnosing Multicollinearity of Logistic Regression Model. Asian Journal of Probability and Statistics, pp.1-9.
