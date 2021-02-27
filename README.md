@@ -15,14 +15,14 @@
 - R
 
 #### Package Used
-- ggplot2 for data visualization
-- dplyr for data manipulation
-- stringr for string manipulation
-- nanier to see the null value in a nice graph
-- validate for data quality checking
-- gridExtra for plotting in grid
-- tidyr for plotting multiple histogram in single plot
-- purr
+- **ggplot2** for data visualization
+- **dplyr** for data manipulation
+- **stringr** for string manipulation
+- **nanier** to see the null value in a nice graph
+- **validate** for data quality checking
+- **gridExtra** for plotting in grid
+- **tidyr** for plotting multiple histogram in single plot
+- **purr**
 
 #### Issues Found
 - heteroskadacity
